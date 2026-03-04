@@ -481,6 +481,32 @@ def _extract_metadata(soup: BeautifulSoup, meta: dict, book_id: int, url: str) -
     Tries three layout strategies in order: <dl>, <table>, and labeled <div>
     pairs.  Falls back to full-text regex search for ISBN if nothing else works.
     """
+    # Series links — Calibre-Web renders series as an <a href="/series/..."> link
+    # in the book description area, separate from the DL/table metadata block.
+    # Extract this first so the early-return strategies below don't skip it.
+    series_link = soup.find("a", href=re.compile(r"/series/", re.I))
+    if series_link and "series" not in meta:
+        text = series_link.get_text(strip=True)
+        m = re.match(r"^(.+?)\s*[\[#(]\s*(\d+(?:\.\d+)?)\s*[\])]?\s*$", text)
+        if m:
+            meta["series"] = m.group(1).strip()
+            try:
+                meta["series_part"] = int(float(m.group(2)))
+            except ValueError:
+                meta["series_part"] = m.group(2)
+        elif text:
+            meta["series"] = text
+            # Index might be in surrounding text: "My Series [2]" split across elements
+            parent_text = series_link.parent.get_text(strip=True) if series_link.parent else ""
+            idx = re.search(r"[\[#(]\s*(\d+(?:\.\d+)?)\s*[\])]?", parent_text)
+            if idx:
+                try:
+                    meta["series_part"] = int(float(idx.group(1)))
+                except ValueError:
+                    meta["series_part"] = idx.group(1)
+        if meta.get("series"):
+            log.info("  Series: %r [%s] for book %d", meta["series"], meta.get("series_part", "?"), book_id)
+
     # Strategy 1: definition list (dt/dd)
     dl = soup.find("dl")
     if dl:
