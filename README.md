@@ -4,15 +4,16 @@ Sync your [Calibre-Web](https://github.com/janeczku/calibre-web) shelves to [Ind
 
 Runs on your home network (where your Calibre-Web instance lives), writes markdown files with [microformats2](https://microformats.org/wiki/microformats2) markup to your Jekyll `_reading/` collection, then commits and pushes automatically so GitHub Pages rebuilds without any manual steps.
 
-Existing files are never overwritten, so ratings and notes you add by hand stay safe.
+Ratings, notes, and other manual edits are never touched by the sync.
 
 ## How it works
 
 1. Authenticates with Calibre-Web and discovers your reading shelves
 2. Scrapes book metadata (title, author, ISBN, series, publication year, tags)
 3. Resolves cover images via the [Open Library](https://openlibrary.org) API — no auth required, no rate limits
-4. Writes Jekyll markdown files with YAML front matter and `p-read-of h-cite` markup
-5. Commits and pushes the Jekyll repo — GitHub Pages rebuilds from there
+4. Writes Jekyll markdown files with YAML front matter and `p-read-of h-cite` markup for new books
+5. Reconciles existing files — if a book has moved to a different shelf (e.g. finished reading it), updates `status` and `date` in place while preserving all other content
+6. Commits and pushes the Jekyll repo — GitHub Pages rebuilds from there
 
 ## Why not GitHub Actions?
 
@@ -97,7 +98,7 @@ series_part: 1
 cover: "https://covers.openlibrary.org/..."
 status: finished        # finished | reading | to-read
 date: 2024-01-01
-rating:                 # fill in manually; never overwritten
+rating:                 # fill in manually; sync never touches this field
 tags: []
 calibre_id: 42
 ```
