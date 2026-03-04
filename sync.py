@@ -505,17 +505,25 @@ def _extract_metadata(soup: BeautifulSoup, meta: dict, book_id: int, url: str) -
         if val_el:
             _assign_field(meta, key, val_el.get_text(strip=True), val_el)
 
-    # Strategy 4: Calibre-Web identifiers div (ISBN in href attribute)
-    # <div class="identifiers"><a href="9780593716724">EbookISBN</a></div>
+    # Strategy 4: Calibre-Web identifiers div.
+    # Custom identifier types (eISBN, etc.) store the raw value as the href:
+    #   <a href="9780593716724">EbookISBN</a>
+    # The standard "isbn" type links to a lookup service, ISBN only in the URL:
+    #   <a href="https://www.worldcat.org/isbn/9780593716724">ISBN</a>
+    # So we search for an ISBN pattern in both the href and the link text.
+    ISBN_RE = re.compile(r"(97[89]\d{10}|\d{9}[\dX])")
     if "isbn" not in meta:
         id_div = soup.find(class_="identifiers")
         if id_div:
             for a in id_div.find_all("a"):
-                href = a.get("href", "")
-                candidate = re.sub(r"[\s\-]", "", href)
-                if re.match(r"^(978|979)\d{10}$", candidate) or re.match(r"^\d{9}[\dX]$", candidate):
-                    meta["isbn"] = candidate
-                    log.info("  ISBN found in identifiers div for book %d: %s", book_id, candidate)
+                for source in (a.get("href", ""), a.get_text(strip=True)):
+                    candidate = re.sub(r"[\s\-]", "", source)
+                    m = ISBN_RE.search(candidate)
+                    if m:
+                        meta["isbn"] = m.group(1)
+                        log.info("  ISBN found in identifiers div for book %d: %s", book_id, m.group(1))
+                        break
+                if "isbn" in meta:
                     break
 
     # Fallback: scan full page text for ISBN-13/10
