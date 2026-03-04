@@ -12,7 +12,7 @@ Ratings, notes, and other manual edits are never touched by the sync.
 2. Scrapes book metadata (title, author, ISBN, series, publication year, tags)
 3. Resolves cover images via the [Open Library](https://openlibrary.org) API — no auth required, no rate limits
 4. Writes Jekyll markdown files with YAML front matter and `p-read-of h-cite` markup for new books
-5. Reconciles existing files — if a book has moved to a different shelf (e.g. finished reading it), updates `status` and `date` in place while preserving all other content
+5. Reconciles existing files — if a book has moved to a different shelf (e.g. finished reading it), updates `status` and `date` in place while preserving all other content; if a book has been removed from all shelves, logs a warning (or deletes the file if `--prune` is set)
 6. Commits and pushes the Jekyll repo — GitHub Pages rebuilds from there
 
 ## Why not GitHub Actions?
@@ -50,6 +50,7 @@ cp .env.example .env
 | `JEKYLL_READING_DIR` | ✓ | Absolute path to the `_reading/` directory in your Jekyll repo |
 | `JEKYLL_REPO_DIR` | ✓ | Absolute path to the root of your Jekyll repo |
 | `SHELF_PREFIX` | | Shelf name prefix — defaults to `CALIBRE_WEB_USER` |
+| `PRUNE_REMOVED` | | Set to `true` to delete `_reading/` files for books removed from all shelves (equivalent to `--prune`) |
 
 ## Shelf naming convention
 
@@ -69,6 +70,12 @@ Shelves should be named with a common prefix followed by a status suffix. The pr
 set -a && source .env && set +a
 
 python3 sync.py
+```
+
+Pass `--prune` to also delete `_reading/` files for books removed from all shelves:
+
+```bash
+python3 sync.py --prune
 ```
 
 Or export them directly:

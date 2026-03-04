@@ -20,8 +20,12 @@ Required environment variables:
 Optional:
     SHELF_PREFIX         Shelf name prefix (defaults to CALIBRE_WEB_USER).
                          Override if your shelves use a different prefix than your username.
+    PRUNE_REMOVED        Set to "true" to delete _reading/ files for books no longer
+                         on any shelf (equivalent to passing --prune on the command line).
+                         Default: files are kept as-is and a warning is logged.
 """
 
+import argparse
 import os
 import re
 import subprocess
@@ -622,18 +626,23 @@ def write_entry(meta: dict, status: str, entry_date: str, output_dir: Path) -> b
 # Reconciliation
 # ---------------------------------------------------------------------------
 
-def reconcile_shelves(calibre_now: dict[int, tuple[str, str]], output_dir: Path) -> int:
+def reconcile_shelves(
+    calibre_now: dict[int, tuple[str, str]],
+    output_dir: Path,
+    prune: bool = False,
+) -> tuple[int, int]:
     """
     Update status and date in existing _reading/ files whose book has moved
     to a different shelf since it was first synced.
 
     calibre_now maps calibre_id → (status, entry_date) based on the current
     shelf contents.  Files whose calibre_id is no longer on any shelf are
-    left untouched (but logged as a warning).
+    deleted when prune=True, or left untouched with a warning otherwise.
 
-    Returns the number of files updated.
+    Returns (updated, pruned).
     """
     updated = 0
+    pruned = 0
 
     for md_file in sorted(output_dir.glob("*.md")):
         if md_file.name == "README.md":
@@ -647,10 +656,15 @@ def reconcile_shelves(calibre_now: dict[int, tuple[str, str]], output_dir: Path)
         calibre_id = int(cid_match.group(1))
 
         if calibre_id not in calibre_now:
-            log.warning(
-                "  %s: book %d is no longer on any shelf (keeping file as-is)",
-                md_file.name, calibre_id,
-            )
+            if prune:
+                log.info("  Pruning %s: book %d no longer on any shelf", md_file.name, calibre_id)
+                md_file.unlink()
+                pruned += 1
+            else:
+                log.warning(
+                    "  %s: book %d is no longer on any shelf (keeping file as-is; use --prune to delete)",
+                    md_file.name, calibre_id,
+                )
             continue
 
         new_status, new_date = calibre_now[calibre_id]
@@ -672,7 +686,7 @@ def reconcile_shelves(calibre_now: dict[int, tuple[str, str]], output_dir: Path)
         md_file.write_text(content, encoding="utf-8")
         updated += 1
 
-    return updated
+    return updated, pruned
 
 
 # ---------------------------------------------------------------------------
@@ -681,10 +695,11 @@ def reconcile_shelves(calibre_now: dict[int, tuple[str, str]], output_dir: Path)
 
 def git_commit_and_push(repo_dir: Path, created: int) -> None:
     """Stage _reading/, commit, and push the Jekyll repo."""
-    log.info("Committing and pushing %d new file(s)...", created)
+    log.info("Committing and pushing changes...")
     try:
+        # -A stages new files, modifications, AND deletions.
         subprocess.run(
-            ["git", "-C", str(repo_dir), "add", "_reading/"],
+            ["git", "-C", str(repo_dir), "add", "-A", "_reading/"],
             check=True,
         )
         subprocess.run(
@@ -706,6 +721,19 @@ def git_commit_and_push(repo_dir: Path, created: int) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        default=os.environ.get("PRUNE_REMOVED", "").lower() in ("1", "true", "yes"),
+        help=(
+            "Delete _reading/ files for books no longer on any Calibre-Web shelf. "
+            "Can also be enabled with PRUNE_REMOVED=true. "
+            "Default: keep files and log a warning."
+        ),
+    )
+    args = parser.parse_args()
+
     # Validate required environment variables
     missing = [
         v for v in (
@@ -774,14 +802,14 @@ def main() -> None:
                 log.error("  Error processing book %d: %s", book_id, exc)
                 errors += 1
 
-    reconciled = reconcile_shelves(calibre_now, OUTPUT_DIR)
+    reconciled, pruned = reconcile_shelves(calibre_now, OUTPUT_DIR, prune=args.prune)
 
     log.info(
-        "Done — %d created, %d reconciled, %d skipped (no change), %d errors",
-        created, reconciled, skipped, errors,
+        "Done — %d created, %d reconciled, %d pruned, %d skipped (no change), %d errors",
+        created, reconciled, pruned, skipped, errors,
     )
 
-    if created > 0 or reconciled > 0:
+    if created > 0 or reconciled > 0 or pruned > 0:
         git_commit_and_push(JEKYLL_REPO_DIR, created)
 
     # Exit non-zero only if every book failed (likely an auth or structural issue)
