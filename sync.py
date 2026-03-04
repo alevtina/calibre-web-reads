@@ -496,9 +496,13 @@ def _extract_metadata(soup: BeautifulSoup, meta: dict, book_id: int, url: str) -
                 meta["series_part"] = m.group(2)
         elif text:
             meta["series"] = text
-            # Index might be in surrounding text: "My Series [2]" split across elements
+            # Index might be in surrounding text, in several formats:
+            #   "My Series [2]" / "My Series (2)" / "My Series #2" (number after name)
+            #   "Book 2 of My Series" (Calibre-Web modal format, number before name)
             parent_text = series_link.parent.get_text(strip=True) if series_link.parent else ""
             idx = re.search(r"[\[#(]\s*(\d+(?:\.\d+)?)\s*[\])]?", parent_text)
+            if not idx:
+                idx = re.search(r"book\s+(\d+(?:\.\d+)?)\s+of", parent_text, re.IGNORECASE)
             if idx:
                 try:
                     meta["series_part"] = int(float(idx.group(1)))
@@ -561,6 +565,24 @@ def _extract_metadata(soup: BeautifulSoup, meta: dict, book_id: int, url: str) -
             if re.match(r"^(978|979)\d{10}$", candidate) or re.match(r"^\d{9}[\dX]$", candidate):
                 meta["isbn"] = candidate
                 log.info("  ISBN found via text scan for book %d: %s", book_id, candidate)
+
+    # Fallback: series index — if we have the series name but not the position,
+    # scan the full page text for the number in any common format:
+    #   "Book 3 of Part of Your World"  (Calibre-Web modal: number BEFORE name)
+    #   "Part of Your World [3]" / "(3)" / "#3"  (number AFTER name)
+    if meta.get("series") and "series_part" not in meta:
+        page_text_for_series = soup.get_text()
+        series_escaped = re.escape(meta["series"])
+        idx_match = (
+            re.search(rf"book\s+(\d+(?:\.\d+)?)\s+of\s+{series_escaped}", page_text_for_series, re.IGNORECASE)
+            or re.search(rf"{series_escaped}\s*[\[#\-(,]?\s*(?:book\s+)?(\d+(?:\.\d+)?)", page_text_for_series, re.IGNORECASE)
+        )
+        if idx_match:
+            try:
+                meta["series_part"] = int(float(idx_match.group(1)))
+                log.info("  Series index found via page text scan for book %d: %s", book_id, meta["series_part"])
+            except ValueError:
+                pass
 
     # Fallback: tag links (Calibre-Web uses /category/ paths for tags)
     if not meta.get("tags"):
