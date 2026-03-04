@@ -619,6 +619,63 @@ def write_entry(meta: dict, status: str, entry_date: str, output_dir: Path) -> b
 
 
 # ---------------------------------------------------------------------------
+# Reconciliation
+# ---------------------------------------------------------------------------
+
+def reconcile_shelves(calibre_now: dict[int, tuple[str, str]], output_dir: Path) -> int:
+    """
+    Update status and date in existing _reading/ files whose book has moved
+    to a different shelf since it was first synced.
+
+    calibre_now maps calibre_id → (status, entry_date) based on the current
+    shelf contents.  Files whose calibre_id is no longer on any shelf are
+    left untouched (but logged as a warning).
+
+    Returns the number of files updated.
+    """
+    updated = 0
+
+    for md_file in sorted(output_dir.glob("*.md")):
+        if md_file.name == "README.md":
+            continue
+
+        content = md_file.read_text(encoding="utf-8")
+
+        cid_match = re.search(r"^calibre_id:\s*(\d+)\s*$", content, re.MULTILINE)
+        if not cid_match:
+            continue
+        calibre_id = int(cid_match.group(1))
+
+        if calibre_id not in calibre_now:
+            log.warning(
+                "  %s: book %d is no longer on any shelf (keeping file as-is)",
+                md_file.name, calibre_id,
+            )
+            continue
+
+        new_status, new_date = calibre_now[calibre_id]
+
+        status_match = re.search(r"^status:\s*(\S+)\s*$", content, re.MULTILINE)
+        if not status_match:
+            continue
+        current_status = status_match.group(1)
+
+        if current_status == new_status:
+            continue
+
+        log.info(
+            "  Reconciling %s: status %s → %s, date → %s",
+            md_file.name, current_status, new_status, new_date,
+        )
+        content = re.sub(r"^status:.*$", f"status: {new_status}", content, flags=re.MULTILINE)
+        content = re.sub(r"^date:.*$", f"date: {new_date}", content, flags=re.MULTILINE)
+        md_file.write_text(content, encoding="utf-8")
+        updated += 1
+
+    return updated
+
+
+# ---------------------------------------------------------------------------
 # Git
 # ---------------------------------------------------------------------------
 
@@ -689,6 +746,7 @@ def main() -> None:
         sys.exit(0)
 
     created = skipped = errors = 0
+    calibre_now: dict[int, tuple[str, str]] = {}  # calibre_id → (status, entry_date)
 
     for shelf_name, shelf_id in shelves.items():
         status, year = shelf_to_status(shelf_name)
@@ -705,6 +763,7 @@ def main() -> None:
         log.info("  %d book(s) on shelf %r", len(book_ids), shelf_name)
 
         for book_id in book_ids:
+            calibre_now[book_id] = (status, entry_date)
             try:
                 meta = get_book_metadata(session, book_id)
                 if write_entry(meta, status, entry_date, OUTPUT_DIR):
@@ -715,13 +774,18 @@ def main() -> None:
                 log.error("  Error processing book %d: %s", book_id, exc)
                 errors += 1
 
-    log.info("Done — %d created, %d skipped (already exist), %d errors", created, skipped, errors)
+    reconciled = reconcile_shelves(calibre_now, OUTPUT_DIR)
 
-    if created > 0:
+    log.info(
+        "Done — %d created, %d reconciled, %d skipped (no change), %d errors",
+        created, reconciled, skipped, errors,
+    )
+
+    if created > 0 or reconciled > 0:
         git_commit_and_push(JEKYLL_REPO_DIR, created)
 
     # Exit non-zero only if every book failed (likely an auth or structural issue)
-    if errors > 0 and created == 0 and skipped == 0:
+    if errors > 0 and created == 0 and reconciled == 0 and skipped == 0:
         sys.exit(1)
 
 
