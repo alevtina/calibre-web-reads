@@ -79,6 +79,16 @@ def slugify(text: str) -> str:
     return text or "untitled"
 
 
+def title_slug(title: str) -> str:
+    """Slugify only the main title — everything before the first colon.
+
+    "Dune: Messiah" → "dune", not "dune-messiah".
+    Falls back to the full title if there is no colon or the part before it is empty.
+    """
+    main = title.split(":", 1)[0].strip()
+    return slugify(main or title)
+
+
 def shelf_to_status(shelf_name: str) -> tuple[str, str | None]:
     """
     Map a Calibre shelf name to an (IndieWeb status, year) tuple.
@@ -653,7 +663,7 @@ def write_entry(meta: dict, status: str, entry_date: str, output_dir: Path) -> b
     Returns True if a new file was created, False if the file already existed
     (existing files are never overwritten to preserve manual edits).
     """
-    slug = slugify(meta["title"])
+    slug = title_slug(meta["title"])
     filepath = output_dir / f"{entry_date}-{slug}.md"
 
     if filepath.exists():
@@ -870,7 +880,7 @@ def main() -> None:
                         skipped += 1
                 elif write_entry(meta, status, entry_date, OUTPUT_DIR):
                     created += 1
-                    id_to_file[book_id] = OUTPUT_DIR / f"{entry_date}-{slugify(meta['title'])}.md"
+                    id_to_file[book_id] = OUTPUT_DIR / f"{entry_date}-{title_slug(meta['title'])}.md"
                 else:
                     skipped += 1
             except Exception as exc:
