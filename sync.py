@@ -831,16 +831,17 @@ def main() -> None:
     created = refreshed = skipped = errors = 0
     calibre_now: dict[int, tuple[str, str]] = {}  # calibre_id → (status, entry_date)
 
-    # Build calibre_id → file index once so --refresh can locate existing files quickly.
+    # Build calibre_id → file index once.  Used to prevent duplicate files when a
+    # book's title (and therefore its slug) changes in Calibre, and to locate
+    # existing files for --refresh without relying on the current slug.
     id_to_file: dict[int, Path] = {}
-    if args.refresh:
-        for md_file in OUTPUT_DIR.glob("*.md"):
-            if md_file.name == "README.md":
-                continue
-            fc = md_file.read_text(encoding="utf-8")
-            m = re.search(r"^calibre_id:\s*(\d+)\s*$", fc, re.MULTILINE)
-            if m:
-                id_to_file[int(m.group(1))] = md_file
+    for md_file in OUTPUT_DIR.glob("*.md"):
+        if md_file.name == "README.md":
+            continue
+        fc = md_file.read_text(encoding="utf-8")
+        m = re.search(r"^calibre_id:\s*(\d+)\s*$", fc, re.MULTILINE)
+        if m:
+            id_to_file[int(m.group(1))] = md_file
 
     for shelf_name, shelf_id in shelves.items():
         status, year = shelf_to_status(shelf_name)
@@ -860,13 +861,16 @@ def main() -> None:
             calibre_now[book_id] = (status, entry_date)
             try:
                 meta = get_book_metadata(session, book_id)
-                if write_entry(meta, status, entry_date, OUTPUT_DIR):
-                    created += 1
-                elif args.refresh and book_id in id_to_file:
-                    if refresh_entry(meta, id_to_file[book_id]):
+                if book_id in id_to_file:
+                    # Book already has a file — don't create a duplicate even if
+                    # the title (and slug) has changed since the file was created.
+                    if args.refresh and refresh_entry(meta, id_to_file[book_id]):
                         refreshed += 1
                     else:
                         skipped += 1
+                elif write_entry(meta, status, entry_date, OUTPUT_DIR):
+                    created += 1
+                    id_to_file[book_id] = OUTPUT_DIR / f"{entry_date}-{slugify(meta['title'])}.md"
                 else:
                     skipped += 1
             except Exception as exc:
