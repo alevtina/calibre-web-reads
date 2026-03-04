@@ -582,16 +582,24 @@ def _assign_field(meta: dict, key: str, val: str, el) -> None:
             meta["isbn"] = isbn
 
     elif "series" in key and "series_part" not in key:
-        # Calibre-Web may include the index in the same field: "Series Name [3]"
-        m = re.match(r"^(.+?)\s*[\[#(]\s*(\d+(?:\.\d+)?)\s*[\])]?\s*$", val)
-        if m:
-            meta.setdefault("series", m.group(1).strip())
-            try:
-                meta.setdefault("series_part", int(float(m.group(2))))
-            except ValueError:
-                meta.setdefault("series_part", m.group(2))
+        if re.search(r"\bid\b", key):
+            # "Series ID" → the book's numeric position within the series
+            if "series" in meta:
+                try:
+                    meta.setdefault("series_part", int(float(val)))
+                except ValueError:
+                    pass
         else:
-            meta.setdefault("series", val)
+            # Calibre-Web may include the index in the same field: "Series Name [3]"
+            m = re.match(r"^(.+?)\s*[\[#(]\s*(\d+(?:\.\d+)?)\s*[\])]?\s*$", val)
+            if m:
+                meta.setdefault("series", m.group(1).strip())
+                try:
+                    meta.setdefault("series_part", int(float(m.group(2))))
+                except ValueError:
+                    meta.setdefault("series_part", m.group(2))
+            else:
+                meta.setdefault("series", val)
 
     elif re.search(r"\b(part|volume|index|number)\b", key):
         if "series" in meta and "series_part" not in meta:
