@@ -51,6 +51,7 @@ cp .env.example .env
 | `JEKYLL_REPO_DIR` | ✓ | Absolute path to the root of your Jekyll repo |
 | `SHELF_PREFIX` | | Shelf name prefix — defaults to `CALIBRE_WEB_USER` |
 | `PRUNE_REMOVED` | | Set to `true` to delete `_reading/` files for books removed from all shelves (equivalent to `--prune`) |
+| `REFRESH_METADATA` | | Set to `true` to re-fetch and update Calibre-owned metadata in existing files (equivalent to `--refresh`) |
 
 ## Shelf naming convention
 
@@ -76,6 +77,12 @@ Pass `--prune` to also delete `_reading/` files for books removed from all shelv
 
 ```bash
 python3 sync.py --prune
+```
+
+Pass `--refresh` to re-fetch Calibre metadata and update existing files. Preserves `rating`, `date`, `status`, and any body content you've written below the front matter:
+
+```bash
+python3 sync.py --refresh
 ```
 
 Or export them directly:

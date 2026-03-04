@@ -23,6 +23,11 @@ Optional:
     PRUNE_REMOVED        Set to "true" to delete _reading/ files for books no longer
                          on any shelf (equivalent to passing --prune on the command line).
                          Default: files are kept as-is and a warning is logged.
+    REFRESH_METADATA     Set to "true" to re-fetch and update Calibre-owned metadata fields
+                         (title, author, ISBN, cover, series, tags, etc.) in existing files
+                         (equivalent to passing --refresh on the command line).
+                         Preserves rating, date, status, and any body content.
+                         Default: existing files are never modified for metadata changes.
 """
 
 import argparse
@@ -603,6 +608,44 @@ calibre_id: {calibre_id}
 """
 
 
+def refresh_entry(meta: dict, md_file: Path) -> bool:
+    """
+    Refresh Calibre-owned front matter fields in an existing _reading/ file.
+
+    Rebuilds the front matter from fresh metadata while preserving user-owned
+    fields (rating) and the body below the front matter.  The date and status
+    fields are also preserved — reconcile_shelves handles those separately.
+
+    Returns True if the file was modified.
+    """
+    content = md_file.read_text(encoding="utf-8")
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        log.warning("  %s: cannot parse front matter, skipping refresh", md_file.name)
+        return False
+    body = parts[2]  # everything after the closing ---
+
+    rating_match = re.search(r"^rating:(.*)$", content, re.MULTILINE)
+    date_match   = re.search(r"^date:\s*(\S+)", content, re.MULTILINE)
+    status_match = re.search(r"^status:\s*(\S+)", content, re.MULTILINE)
+
+    existing_date   = date_match.group(1)   if date_match   else TODAY
+    existing_status = status_match.group(1) if status_match else "to-read"
+    existing_rating = rating_match.group(1) if rating_match else ""
+
+    new_content = build_front_matter(meta, existing_status, existing_date)
+    new_content = re.sub(r"^rating:.*$", f"rating:{existing_rating}", new_content, flags=re.MULTILINE)
+    new_content += body
+
+    if new_content == content:
+        return False
+
+    md_file.write_text(new_content, encoding="utf-8")
+    log.info("  Refreshed: %s", md_file.name)
+    return True
+
+
 def write_entry(meta: dict, status: str, entry_date: str, output_dir: Path) -> bool:
     """
     Write a _reading/ Markdown file for one book.
@@ -732,6 +775,18 @@ def main() -> None:
             "Default: keep files and log a warning."
         ),
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        default=os.environ.get("REFRESH_METADATA", "").lower() in ("1", "true", "yes"),
+        help=(
+            "Re-fetch and update Calibre-owned metadata fields (title, author, ISBN, "
+            "cover, series, tags, etc.) in existing _reading/ files. "
+            "Preserves rating, date, status, and body content. "
+            "Can also be enabled with REFRESH_METADATA=true. "
+            "Default: existing files are never modified for metadata changes."
+        ),
+    )
     args = parser.parse_args()
 
     # Validate required environment variables
@@ -773,8 +828,19 @@ def main() -> None:
         log.info("No matching shelves — nothing to sync.")
         sys.exit(0)
 
-    created = skipped = errors = 0
+    created = refreshed = skipped = errors = 0
     calibre_now: dict[int, tuple[str, str]] = {}  # calibre_id → (status, entry_date)
+
+    # Build calibre_id → file index once so --refresh can locate existing files quickly.
+    id_to_file: dict[int, Path] = {}
+    if args.refresh:
+        for md_file in OUTPUT_DIR.glob("*.md"):
+            if md_file.name == "README.md":
+                continue
+            fc = md_file.read_text(encoding="utf-8")
+            m = re.search(r"^calibre_id:\s*(\d+)\s*$", fc, re.MULTILINE)
+            if m:
+                id_to_file[int(m.group(1))] = md_file
 
     for shelf_name, shelf_id in shelves.items():
         status, year = shelf_to_status(shelf_name)
@@ -796,6 +862,11 @@ def main() -> None:
                 meta = get_book_metadata(session, book_id)
                 if write_entry(meta, status, entry_date, OUTPUT_DIR):
                     created += 1
+                elif args.refresh and book_id in id_to_file:
+                    if refresh_entry(meta, id_to_file[book_id]):
+                        refreshed += 1
+                    else:
+                        skipped += 1
                 else:
                     skipped += 1
             except Exception as exc:
@@ -805,15 +876,15 @@ def main() -> None:
     reconciled, pruned = reconcile_shelves(calibre_now, OUTPUT_DIR, prune=args.prune)
 
     log.info(
-        "Done — %d created, %d reconciled, %d pruned, %d skipped (no change), %d errors",
-        created, reconciled, pruned, skipped, errors,
+        "Done — %d created, %d refreshed, %d reconciled, %d pruned, %d skipped (no change), %d errors",
+        created, refreshed, reconciled, pruned, skipped, errors,
     )
 
-    if created > 0 or reconciled > 0 or pruned > 0:
+    if created > 0 or refreshed > 0 or reconciled > 0 or pruned > 0:
         git_commit_and_push(JEKYLL_REPO_DIR, created)
 
     # Exit non-zero only if every book failed (likely an auth or structural issue)
-    if errors > 0 and created == 0 and reconciled == 0 and skipped == 0:
+    if errors > 0 and created == 0 and refreshed == 0 and reconciled == 0 and pruned == 0 and skipped == 0:
         sys.exit(1)
 
 
