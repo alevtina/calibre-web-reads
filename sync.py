@@ -130,11 +130,11 @@ def yaml_str(value: str) -> str:
 def format_author_yaml(authors: list[str]) -> str:
     """Render the author field as a YAML scalar or sequence."""
     if not authors:
-        return 'author: ""'
+        return 'book_author: ""'
     if len(authors) == 1:
-        return f"author: {yaml_str(authors[0])}"
+        return f"book_author: {yaml_str(authors[0])}"
     lines = "\n".join(f"  - {yaml_str(a)}" for a in authors)
-    return f"author:\n{lines}"
+    return f"book_author:\n{lines}"
 
 
 # ---------------------------------------------------------------------------
@@ -665,7 +665,7 @@ def build_front_matter(meta: dict, status: str, entry_date: str) -> str:
 
     return f"""\
 ---
-layout: read
+layout: book
 title: {yaml_str(meta['title'])}
 {author_line}
 {isbn_line}
