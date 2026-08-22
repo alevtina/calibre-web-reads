@@ -61,6 +61,7 @@ Shelves should be named with a common prefix followed by a status suffix. The pr
 |---|---|
 | `{prefix}-reading` | Currently reading |
 | `{prefix}-tbr` | Want to read |
+| `{prefix}-dnf` | Did not finish |
 | `{prefix}-2024` | Finished in 2024 |
 | `{prefix}-2025` | Finished in 2025 |
 
@@ -110,7 +111,7 @@ year: 2024
 series: "Series Name"
 series_part: 1
 cover: "https://covers.openlibrary.org/..."
-status: finished        # finished | reading | to-read
+status: finished        # finished | reading | to-read | dnf
 date: 2024-01-01
 rating:                 # fill in manually; sync never touches this field
 tags: []

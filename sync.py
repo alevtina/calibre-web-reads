@@ -57,7 +57,7 @@ JEKYLL_REPO_DIR = Path(os.environ.get("JEKYLL_REPO_DIR", "")).expanduser()
 # Override with SHELF_PREFIX if your shelf names use a different prefix.
 SHELF_PREFIX = os.environ.get("SHELF_PREFIX", USERNAME).lower()
 FINISHED_RE = re.compile(rf"^{re.escape(SHELF_PREFIX)}-(\d{{4}})$", re.IGNORECASE)
-STATUS_SHELVES = {f"{SHELF_PREFIX}-reading", f"{SHELF_PREFIX}-tbr"}
+STATUS_SHELVES = {f"{SHELF_PREFIX}-reading", f"{SHELF_PREFIX}-tbr", f"{SHELF_PREFIX}-dnf"}
 
 TODAY = date.today().isoformat()
 
@@ -96,6 +96,7 @@ def shelf_to_status(shelf_name: str) -> tuple[str, str | None]:
     {prefix}-YYYY    → ("finished", "YYYY")
     {prefix}-reading → ("reading",  None)
     {prefix}-tbr     → ("to-read",  None)
+    {prefix}-dnf     → ("dnf",      None)
     anything else       → ("unknown", None)
     """
     m = FINISHED_RE.match(shelf_name)
@@ -105,6 +106,8 @@ def shelf_to_status(shelf_name: str) -> tuple[str, str | None]:
         return "reading", None
     if shelf_name.lower() == f"{SHELF_PREFIX}-tbr":
         return "to-read", None
+    if shelf_name.lower() == f"{SHELF_PREFIX}-dnf":
+        return "dnf", None
     return "unknown", None
 
 
