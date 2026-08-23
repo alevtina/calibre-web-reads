@@ -680,6 +680,7 @@ status: {status}
 date: {entry_date}
 rating:
 tags: {tags_line}
+format: electronic
 calibre_id: {calibre_id}
 ---
 """
