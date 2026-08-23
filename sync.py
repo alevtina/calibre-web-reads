@@ -691,7 +691,7 @@ def refresh_entry(meta: dict, md_file: Path) -> bool:
     Refresh Calibre-owned front matter fields in an existing _reading/ file.
 
     Rebuilds the front matter from fresh metadata while preserving user-owned
-    fields (rating) and the body below the front matter.  The date and status
+    fields (rating, format) and the body below the front matter.  The date and status
     fields are also preserved — reconcile_shelves handles those separately.
 
     Returns True if the file was modified.
@@ -707,13 +707,16 @@ def refresh_entry(meta: dict, md_file: Path) -> bool:
     rating_match = re.search(r"^rating:(.*)$", content, re.MULTILINE)
     date_match   = re.search(r"^date:\s*(\S+)", content, re.MULTILINE)
     status_match = re.search(r"^status:\s*(\S+)", content, re.MULTILINE)
+    format_match = re.search(r"^format:(.*)$", content, re.MULTILINE)
 
     existing_date   = date_match.group(1)   if date_match   else TODAY
     existing_status = status_match.group(1) if status_match else "to-read"
     existing_rating = rating_match.group(1) if rating_match else ""
+    existing_format = format_match.group(1) if format_match else " electronic"
 
     new_content = build_front_matter(meta, existing_status, existing_date)
     new_content = re.sub(r"^rating:.*$", f"rating:{existing_rating}", new_content, flags=re.MULTILINE)
+    new_content = re.sub(r"^format:.*$", f"format:{existing_format}", new_content, flags=re.MULTILINE)
     new_content += body
 
     if new_content == content:

@@ -162,6 +162,7 @@ status: finished        # finished | reading | to-read | dnf
 date: 2024-01-01
 rating:                 # fill in manually; sync never touches this field
 tags: []
+format: electronic      # defaults to electronic; edit manually — refresh preserves your value
 calibre_id: 42
 ```
 
