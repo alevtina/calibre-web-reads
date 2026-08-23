@@ -98,6 +98,53 @@ export JEKYLL_REPO_DIR=~/sites/mysite
 python3 sync.py
 ```
 
+## Scheduling
+
+`run_sync.sh` sources `.env` and runs `sync.py` — use it as the entry point for a scheduled job rather than invoking `sync.py` directly, so credentials and paths are always loaded consistently.
+
+On macOS, schedule it with `launchd`. Create `~/Library/LaunchAgents/com.example.calibre-web-reads-sync.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.calibre-web-reads-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/absolute/path/to/calibre-web-reads/run_sync.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/absolute/path/to/logs/calibre-web-reads-sync.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/absolute/path/to/logs/calibre-web-reads-sync.log</string>
+</dict>
+</plist>
+```
+
+Use an absolute path to `run_sync.sh` — if the repo is ever moved, update the path here and reload the job:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.example.calibre-web-reads-sync.plist
+launchctl load ~/Library/LaunchAgents/com.example.calibre-web-reads-sync.plist
+```
+
 ## Jekyll integration
 
 This script expects your Jekyll site to have a `_reading/` collection and a `read` layout. The generated front matter fields are:
